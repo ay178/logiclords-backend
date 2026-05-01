@@ -20,7 +20,7 @@ app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { error: 'Too m
 
 /* ── CORS ── */
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: '*',
   credentials: true,
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
