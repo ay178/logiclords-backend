@@ -42,6 +42,8 @@ app.use('/api/auth',     authRoutes);
 app.use('/api/members',  memberRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks',    taskRoutes);
+const githubRoutes = require('./routes/github');
+app.use('/api/github', githubRoutes);
 
 /* ── Health ── */
 app.get('/api/health', (_req, res) => res.json({
