@@ -11,6 +11,7 @@ const authRoutes    = require('./routes/auth');
 const memberRoutes  = require('./routes/members');
 const projectRoutes = require('./routes/projects');
 const taskRoutes    = require('./routes/tasks');
+const githubRoutes  = require('./routes/github');
 
 const app = express();
 
@@ -20,7 +21,7 @@ app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { error: 'Too m
 
 /* ── CORS ── */
 app.use(cors({
-  origin: '*',
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true,
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
@@ -33,7 +34,10 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 /* ── DB ── */
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords')
+mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
 .then(() => console.log('✅ MongoDB connected'))
 .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
 
@@ -42,8 +46,7 @@ app.use('/api/auth',     authRoutes);
 app.use('/api/members',  memberRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks',    taskRoutes);
-const githubRoutes = require('./routes/github');
-app.use('/api/github', githubRoutes);
+app.use('/api/github',   githubRoutes);
 
 /* ── Health ── */
 app.get('/api/health', (_req, res) => res.json({
