@@ -17,11 +17,11 @@ const app = express();
 
 /* ── Security ── */
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { error: 'Too many requests, slow down.' } }));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: { error: 'Too many requests' } }));
 
 /* ── CORS ── */
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: '*',
   credentials: true,
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
@@ -33,13 +33,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-/* ── DB ── */
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('✅ MongoDB connected'))
-.catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
+/* ── MongoDB ── */
+mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords')
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
 
 /* ── Routes ── */
 app.use('/api/auth',     authRoutes);
@@ -53,20 +50,16 @@ app.get('/api/health', (_req, res) => res.json({
   status: 'ok',
   uptime: process.uptime(),
   timestamp: new Date().toISOString(),
-  env: process.env.NODE_ENV || 'development',
 }));
 
 /* ── 404 ── */
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 
-/* ── Global error handler ── */
+/* ── Error handler ── */
 app.use((err, _req, res, _next) => {
   const status = err.statusCode || err.status || 500;
   console.error('[ERROR]', err.message);
-  res.status(status).json({
-    error: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
-  });
+  res.status(status).json({ error: err.message || 'Internal Server Error' });
 });
 
 const PORT = process.env.PORT || 5000;
