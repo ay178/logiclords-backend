@@ -22,24 +22,29 @@ const chatRoutes    = require('./routes/chat');
 const app    = express();
 const server = http.createServer(app);
 
-/* ── Socket.io setup ── */
+/* ── Socket.io ── */
 const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
+  cors: { origin: '*', methods: ['GET','POST'] },
 });
+
+/* ── Expose io to all routes ── */
+app.set('io', io);
 
 /* ── Security ── */
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 300, message: { error: 'Too many requests' } }));
+app.use(rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Too many requests' } }));
 
 /* ── CORS ── */
 app.use(cors({ origin: '*', credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
 
-/* ── Body / Static ── */
+/* ── Body ── */
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+/* ── Webhook route needs raw body — register BEFORE express.json ── */
+app.use('/api/github/webhook', express.raw({ type: 'application/json' }));
+
+/* ── Static ── */
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
@@ -69,127 +74,77 @@ app.use((err, _req, res, _next) => {
 });
 
 /* ══════════════════════════════════════════════════
-   SOCKET.IO — Real-time Chat
+   SOCKET.IO — Real-time Chat + Project Updates
 ══════════════════════════════════════════════════ */
-
-// Track online users: { socketId -> { memberId, name, role, avatar } }
 const onlineUsers = new Map();
 
-/* ── Auth middleware for sockets ── */
+/* Auth middleware for sockets */
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
     if (!token) return next(new Error('Authentication required'));
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'logiclords_super_secret_change_me_in_production');
     const member  = await Member.findById(decoded.id).select('-password');
     if (!member || !member.isActive) return next(new Error('User not found'));
-
     socket.user = member;
     next();
-  } catch (err) {
-    next(new Error('Invalid token'));
-  }
+  } catch (err) { next(new Error('Invalid token')); }
 });
 
 io.on('connection', (socket) => {
   const user = socket.user;
   console.log(`💬 ${user.name} connected (${socket.id})`);
 
-  /* ── User joins ── */
-  onlineUsers.set(socket.id, {
-    _id:    user._id,
-    name:   user.name,
-    role:   user.role,
-    avatar: user.avatar,
-    isAdmin: user.isAdmin,
-  });
-
-  // Join general room
+  onlineUsers.set(socket.id, { _id: user._id, name: user.name, role: user.role, avatar: user.avatar, isAdmin: user.isAdmin });
   socket.join('general');
-
-  // Broadcast updated online users list
   io.emit('online_users', Array.from(onlineUsers.values()));
+  socket.to('general').emit('user_joined', { user: { name: user.name, role: user.role }, timestamp: new Date() });
 
-  // Notify others
-  socket.to('general').emit('user_joined', {
-    user: { name: user.name, role: user.role },
-    timestamp: new Date(),
-  });
-
-  /* ── Send message ── */
+  /* Send message */
   socket.on('send_message', async (data) => {
     try {
       const { text, room = 'general' } = data;
       if (!text?.trim()) return;
-
-      // Save to DB
-      const message = await Message.create({
-        sender: user._id,
-        text:   text.trim().slice(0, 2000),
-        room,
-      });
+      const message = await Message.create({ sender: user._id, text: text.trim().slice(0, 2000), room });
       await message.populate('sender', 'name role avatar isAdmin');
-
-      // Broadcast to room
-      io.to(room).emit('new_message', {
-        _id:       message._id,
-        text:      message.text,
-        room:      message.room,
-        sender:    message.sender,
-        createdAt: message.createdAt,
-      });
-    } catch (err) {
-      socket.emit('error', { message: 'Failed to send message' });
-    }
+      io.to(room).emit('new_message', { _id: message._id, text: message.text, room: message.room, sender: message.sender, createdAt: message.createdAt });
+    } catch (err) { socket.emit('error', { message: 'Failed to send message' }); }
   });
 
-  /* ── Typing indicator ── */
-  socket.on('typing_start', (data) => {
-    socket.to(data.room || 'general').emit('user_typing', {
-      name: user.name,
-      isTyping: true,
-    });
-  });
+  /* Typing */
+  socket.on('typing_start', (data) => socket.to(data.room || 'general').emit('user_typing', { name: user.name, isTyping: true }));
+  socket.on('typing_stop',  (data) => socket.to(data.room || 'general').emit('user_typing', { name: user.name, isTyping: false }));
 
-  socket.on('typing_stop', (data) => {
-    socket.to(data.room || 'general').emit('user_typing', {
-      name: user.name,
-      isTyping: false,
-    });
-  });
-
-  /* ── Delete message ── */
+  /* Delete message */
   socket.on('delete_message', async (data) => {
     try {
-      const { messageId, room = 'general' } = data;
-      const msg = await Message.findById(messageId);
+      const msg = await Message.findById(data.messageId);
       if (!msg) return;
-
-      const isOwner = String(msg.sender) === String(user._id);
-      if (!isOwner && !user.isAdmin) return;
-
+      if (String(msg.sender) !== String(user._id) && !user.isAdmin) return;
       await msg.deleteOne();
-      io.to(room).emit('message_deleted', { messageId });
-    } catch (err) {
-      socket.emit('error', { message: 'Failed to delete message' });
-    }
+      io.to(data.room || 'general').emit('message_deleted', { messageId: data.messageId });
+    } catch (err) {}
   });
 
-  /* ── Disconnect ── */
+  /* Join project room for real-time project updates */
+  socket.on('join_project', (projectId) => {
+    socket.join(`project:${projectId}`);
+  });
+
+  socket.on('leave_project', (projectId) => {
+    socket.leave(`project:${projectId}`);
+  });
+
+  /* Disconnect */
   socket.on('disconnect', () => {
     onlineUsers.delete(socket.id);
     io.emit('online_users', Array.from(onlineUsers.values()));
-    socket.to('general').emit('user_left', {
-      user: { name: user.name },
-      timestamp: new Date(),
-    });
+    socket.to('general').emit('user_left', { user: { name: user.name }, timestamp: new Date() });
     console.log(`👋 ${user.name} disconnected`);
   });
 });
 
-/* ── Start server ── */
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 LogicLords API + Chat running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 LogicLords API + Real-time Chat running on http://localhost:${PORT}`));
 
 module.exports = app;
