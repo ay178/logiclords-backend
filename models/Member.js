@@ -28,37 +28,53 @@ const memberSchema = new mongoose.Schema({
     enum: ['Frontend','Backend','AI/ML','Designer','DevOps','Full Stack','Mobile'],
     default: 'Frontend',
   },
-  skills: [{ type: String, trim: true, maxlength: 40 }],
-  avatar: { type: String, default: '' },
+  skills:   [{ type: String, trim: true, maxlength: 40 }],
+  avatar:   { type: String, default: '' },
   github:   { type: String, default: '' },
   linkedin: { type: String, default: '' },
-  isAdmin: { type: Boolean, default: false },
+  bio:      { type: String, maxlength: 280, default: '' },
+  isAdmin:  { type: Boolean, default: false },
+
+  /* Email Verification */
+  isEmailVerified:    { type: Boolean, default: false },
+  emailVerifyToken:   { type: String, select: false },
+  emailVerifyExpires: { type: Date,   select: false },
+
+  /* Admin Approval */
+  approvalStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending',
+  },
+  approvedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'Member', default: null },
+  approvedAt:   { type: Date, default: null },
+  rejectedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'Member', default: null },
+  rejectedAt:   { type: Date, default: null },
+  rejectReason: { type: String, default: '' },
+
   isActive: { type: Boolean, default: true },
-  bio: { type: String, maxlength: 280, default: '' },
-  joinedAt: { type: Date, default: Date.now },
   lastSeen: { type: Date, default: Date.now },
+  joinedAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 
-/* ── Pre-save: hash password ── */
 memberSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 12);
 });
 
-/* ── Instance method: compare password ── */
 memberSchema.methods.comparePassword = async function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-/* ── Instance method: public profile ── */
 memberSchema.methods.toPublic = function () {
   const obj = this.toObject();
   delete obj.password;
+  delete obj.emailVerifyToken;
+  delete obj.emailVerifyExpires;
   return obj;
 };
 
-/* ── Indexes ── */
 memberSchema.index({ email: 1 });
-memberSchema.index({ role: 1 });
+memberSchema.index({ approvalStatus: 1 });
 
 module.exports = mongoose.model('Member', memberSchema);
