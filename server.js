@@ -9,15 +9,6 @@ const path       = require('path');
 const http       = require('http');
 const { Server } = require('socket.io');
 const jwt        = require('jsonwebtoken');
-const Member     = require('./models/Member');
-const Message    = require('./models/Message');
-
-const authRoutes    = require('./routes/auth');
-const memberRoutes  = require('./routes/members');
-const projectRoutes = require('./routes/projects');
-const taskRoutes    = require('./routes/tasks');
-const githubRoutes  = require('./routes/github');
-const chatRoutes    = require('./routes/chat');
 
 const app    = express();
 const server = http.createServer(app);
@@ -26,8 +17,6 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET','POST'] },
 });
-
-/* ── Expose io to all routes ── */
 app.set('io', io);
 
 /* ── Security ── */
@@ -37,14 +26,14 @@ app.use(rateLimit({ windowMs: 15*60*1000, max: 300, message: { error: 'Too many 
 /* ── CORS ── */
 app.use(cors({ origin: '*', credentials: true, methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
 
-/* ── Body ── */
+/* ── Webhook needs raw body — BEFORE express.json ── */
+app.use('/api/github/webhook', express.raw({ type: 'application/json' }));
+
+/* ── Body parsers ── */
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-/* ── Webhook route needs raw body — register BEFORE express.json ── */
-app.use('/api/github/webhook', express.raw({ type: 'application/json' }));
-
-/* ── Static ── */
+/* ── Static files ── */
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
@@ -53,7 +42,20 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords'
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
 
-/* ── REST Routes ── */
+/* ── Load Models first (order matters) ── */
+require('./models/Member');
+require('./models/Message');
+require('./models/Project');
+require('./models/Task');
+
+/* ── Routes ── */
+const authRoutes    = require('./routes/auth');
+const memberRoutes  = require('./routes/members');
+const projectRoutes = require('./routes/projects');
+const taskRoutes    = require('./routes/tasks');
+const githubRoutes  = require('./routes/github');
+const chatRoutes    = require('./routes/chat');
+
 app.use('/api/auth',     authRoutes);
 app.use('/api/members',  memberRoutes);
 app.use('/api/projects', projectRoutes);
@@ -61,41 +63,56 @@ app.use('/api/tasks',    taskRoutes);
 app.use('/api/github',   githubRoutes);
 app.use('/api/chat',     chatRoutes);
 
-/* ── Health ── */
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() }));
+/* ── Health check ── */
+app.get('/api/health', (_req, res) => res.json({
+  status: 'ok',
+  uptime: Math.floor(process.uptime()),
+  timestamp: new Date().toISOString(),
+}));
 
 /* ── 404 ── */
 app.use((_req, res) => res.status(404).json({ error: 'Route not found' }));
 
-/* ── Error handler ── */
+/* ── Global error handler ── */
 app.use((err, _req, res, _next) => {
   console.error('[ERROR]', err.message);
   res.status(err.statusCode || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
 /* ══════════════════════════════════════════════════
-   SOCKET.IO — Real-time Chat + Project Updates
+   SOCKET.IO — Real-time Chat + Notifications
 ══════════════════════════════════════════════════ */
+const Member = require('./models/Member');
+const Message = require('./models/Message');
 const onlineUsers = new Map();
 
-/* Auth middleware for sockets */
+/* JWT Auth for sockets */
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-    if (!token) return next(new Error('Authentication required'));
+    if (!token) return next(new Error('No token'));
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'logiclords_super_secret_change_me_in_production');
     const member  = await Member.findById(decoded.id).select('-password');
-    if (!member || !member.isActive) return next(new Error('User not found'));
+    if (!member) return next(new Error('User not found'));
     socket.user = member;
     next();
-  } catch (err) { next(new Error('Invalid token')); }
+  } catch (err) {
+    next(new Error('Invalid token'));
+  }
 });
 
 io.on('connection', (socket) => {
   const user = socket.user;
-  console.log(`💬 ${user.name} connected (${socket.id})`);
+  console.log(`💬 ${user.name} connected`);
 
-  onlineUsers.set(socket.id, { _id: user._id, name: user.name, role: user.role, avatar: user.avatar, isAdmin: user.isAdmin });
+  /* Track online users */
+  onlineUsers.set(socket.id, {
+    _id:     user._id,
+    name:    user.name,
+    role:    user.role,
+    avatar:  user.avatar,
+    isAdmin: user.isAdmin,
+  });
   socket.join('general');
   io.emit('online_users', Array.from(onlineUsers.values()));
   socket.to('general').emit('user_joined', { user: { name: user.name, role: user.role }, timestamp: new Date() });
@@ -107,11 +124,17 @@ io.on('connection', (socket) => {
       if (!text?.trim()) return;
       const message = await Message.create({ sender: user._id, text: text.trim().slice(0, 2000), room });
       await message.populate('sender', 'name role avatar isAdmin');
-      io.to(room).emit('new_message', { _id: message._id, text: message.text, room: message.room, sender: message.sender, createdAt: message.createdAt });
-    } catch (err) { socket.emit('error', { message: 'Failed to send message' }); }
+      io.to(room).emit('new_message', {
+        _id:       message._id,
+        text:      message.text,
+        room:      message.room,
+        sender:    message.sender,
+        createdAt: message.createdAt,
+      });
+    } catch (err) { console.error('send_message error:', err.message); }
   });
 
-  /* Typing */
+  /* Typing indicators */
   socket.on('typing_start', (data) => socket.to(data.room || 'general').emit('user_typing', { name: user.name, isTyping: true }));
   socket.on('typing_stop',  (data) => socket.to(data.room || 'general').emit('user_typing', { name: user.name, isTyping: false }));
 
@@ -126,14 +149,9 @@ io.on('connection', (socket) => {
     } catch (err) {}
   });
 
-  /* Join project room for real-time project updates */
-  socket.on('join_project', (projectId) => {
-    socket.join(`project:${projectId}`);
-  });
-
-  socket.on('leave_project', (projectId) => {
-    socket.leave(`project:${projectId}`);
-  });
+  /* Project room subscriptions */
+  socket.on('join_project',  (id) => socket.join(`project:${id}`));
+  socket.on('leave_project', (id) => socket.leave(`project:${id}`));
 
   /* Disconnect */
   socket.on('disconnect', () => {
@@ -144,7 +162,8 @@ io.on('connection', (socket) => {
   });
 });
 
+/* ── Start ── */
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 LogicLords API + Real-time Chat running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 LogicLords running on http://localhost:${PORT}`));
 
 module.exports = app;
