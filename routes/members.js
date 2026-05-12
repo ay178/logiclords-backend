@@ -8,6 +8,14 @@ const emailService = require('../utils/emailService');
 
 const router = express.Router();
 
+const sendEmailInBackground = (label, sendEmail) => {
+  setImmediate(() => {
+    Promise.resolve()
+      .then(sendEmail)
+      .catch((err) => console.error(`${label} failed:`, err.message));
+  });
+};
+
 /* ── Avatar upload ── */
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -84,12 +92,9 @@ router.patch('/:id/approve', protect, adminOnly, async (req, res, next) => {
     member.isActive       = true;
     await member.save();
 
-    // Send approval email
-    try {
-      await emailService.sendApprovalConfirmation({ to: member.email, name: member.name });
-    } catch (e) {
-      console.error('Approval email failed:', e.message);
-    }
+    sendEmailInBackground('Approval email', () =>
+      emailService.sendApprovalConfirmation({ to: member.email, name: member.name })
+    );
 
     // Real-time notification via Socket.io
     const io = req.app.get('io');
@@ -121,12 +126,9 @@ router.patch('/:id/reject', protect, adminOnly, async (req, res, next) => {
     member.isActive       = false;
     await member.save();
 
-    // Send rejection email
-    try {
-      await emailService.sendRejectionEmail({ to: member.email, name: member.name, reason });
-    } catch (e) {
-      console.error('Rejection email failed:', e.message);
-    }
+    sendEmailInBackground('Rejection email', () =>
+      emailService.sendRejectionEmail({ to: member.email, name: member.name, reason })
+    );
 
     res.json({ message: `${member.name}'s application has been rejected.` });
   } catch (err) { next(err); }
