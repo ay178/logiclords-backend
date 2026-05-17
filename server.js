@@ -39,9 +39,18 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 /* ── MongoDB ── */
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords')
-  .then(() => console.log('✅ MongoDB connected'))
+  .then(() => {
+    console.log('✅ MongoDB connected');
+    // EMAIL TEST
+    const emailService = require('./utils/emailService');
+    emailService.sendVerificationEmail({
+      to: process.env.GMAIL_USER,
+      name: 'Test',
+      token: 'test123'
+    }).then(() => console.log('✅ Test email sent!'))
+      .catch(err => console.error('❌ Test email failed:', err.message));
+  })
   .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
-
 /* ── Load Models first (order matters) ── */
 require('./models/Member');
 require('./models/Message');
