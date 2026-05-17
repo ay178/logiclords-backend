@@ -1,8 +1,15 @@
-const { Resend } = require('resend');
-const resend = new Resend(process.env.RESEND_API_KEY);
+const nodemailer = require('nodemailer');
 
-const FROM_TEAM   = 'LogicLords Team <onboarding@resend.dev>';
-const FROM_SYSTEM = 'LogicLords System <onboarding@resend.dev>';
+const createTransporter = () => nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
+});
+
 
 /* ─────────────────────────────────────────────
    Send verification email to new registrant
@@ -10,8 +17,9 @@ const FROM_SYSTEM = 'LogicLords System <onboarding@resend.dev>';
 exports.sendVerificationEmail = async ({ to, name, token }) => {
   const verifyUrl = `${process.env.CLIENT_URL}/verify?token=${token}`;
 
-  await resend.emails.send({
-    from: FROM_TEAM,
+ const transporter = createTransporter();
+  await transporter.sendMail({
+    from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
     to,
     subject: '✅ Verify your LogicLords account',
     html: `
@@ -59,11 +67,12 @@ exports.sendVerificationEmail = async ({ to, name, token }) => {
 exports.sendAdminApprovalRequest = async ({ adminEmail, adminName, applicant }) => {
   const approveUrl = `${process.env.CLIENT_URL}/admin?action=approve&id=${applicant._id}`;
   const rejectUrl  = `${process.env.CLIENT_URL}/admin?action=reject&id=${applicant._id}`;
-
-  await resend.emails.send({
-    from: FROM_SYSTEM,
+const transporter = createTransporter();
+  await transporter.sendMail({
+    from: `"LogicLords System" <${process.env.GMAIL_USER}>`,
     to: adminEmail,
     subject: `🔔 New Registration Request — ${applicant.name}`,
+ 
     html: `
       <!DOCTYPE html>
       <html>
@@ -111,11 +120,12 @@ exports.sendAdminApprovalRequest = async ({ adminEmail, adminName, applicant }) 
 ───────────────────────────────────────────── */
 exports.sendApprovalConfirmation = async ({ to, name }) => {
   const loginUrl = `${process.env.CLIENT_URL}`;
-
-  await resend.emails.send({
-    from: FROM_TEAM,
+const transporter = createTransporter();
+  await transporter.sendMail({
+    from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
     to,
     subject: '🎉 Welcome to LogicLords — You are approved!',
+ 
     html: `
       <!DOCTYPE html>
       <html>
@@ -154,8 +164,9 @@ exports.sendApprovalConfirmation = async ({ to, name }) => {
    Notify member that they have been rejected
 ───────────────────────────────────────────── */
 exports.sendRejectionEmail = async ({ to, name, reason }) => {
-  await resend.emails.send({
-    from: FROM_TEAM,
+const transporter = createTransporter();
+  await transporter.sendMail({
+    from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
     to,
     subject: 'LogicLords — Application Update',
     html: `
