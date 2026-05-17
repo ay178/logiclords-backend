@@ -1,13 +1,21 @@
 const nodemailer = require('nodemailer');
 
-/* ── Create Gmail transporter ── */
-const createTransporter = () => nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD, // Gmail App Password (not regular password)
-  },
-});
+const createTransporter = () => {
+  const t = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  });
+
+  t.verify((err, success) => {
+    if (err) console.error('❌ Email transporter error:', err.message);
+    else console.log('✅ Email transporter ready:', process.env.GMAIL_USER);
+  });
+
+  return t;
+};
 
 /* ── Email Templates ── */
 
