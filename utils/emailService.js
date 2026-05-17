@@ -1,24 +1,13 @@
-const nodemailer = require('nodemailer');
 
-const createTransporter = () => nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
-
-
+const sgMail = require('@sendgrid/mail');
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 /* ─────────────────────────────────────────────
    Send verification email to new registrant
 ───────────────────────────────────────────── */
 exports.sendVerificationEmail = async ({ to, name, token }) => {
   const verifyUrl = `${process.env.CLIENT_URL}/verify?token=${token}`;
 
- const transporter = createTransporter();
-  await transporter.sendMail({
+await sgMail.send({
     from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
     to,
     subject: '✅ Verify your LogicLords account',
@@ -67,8 +56,7 @@ exports.sendVerificationEmail = async ({ to, name, token }) => {
 exports.sendAdminApprovalRequest = async ({ adminEmail, adminName, applicant }) => {
   const approveUrl = `${process.env.CLIENT_URL}/admin?action=approve&id=${applicant._id}`;
   const rejectUrl  = `${process.env.CLIENT_URL}/admin?action=reject&id=${applicant._id}`;
-const transporter = createTransporter();
-  await transporter.sendMail({
+await sgMail.send({
     from: `"LogicLords System" <${process.env.GMAIL_USER}>`,
     to: adminEmail,
     subject: `🔔 New Registration Request — ${applicant.name}`,
@@ -120,8 +108,7 @@ const transporter = createTransporter();
 ───────────────────────────────────────────── */
 exports.sendApprovalConfirmation = async ({ to, name }) => {
   const loginUrl = `${process.env.CLIENT_URL}`;
-const transporter = createTransporter();
-  await transporter.sendMail({
+await sgMail.send({
     from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
     to,
     subject: '🎉 Welcome to LogicLords — You are approved!',
@@ -164,8 +151,7 @@ const transporter = createTransporter();
    Notify member that they have been rejected
 ───────────────────────────────────────────── */
 exports.sendRejectionEmail = async ({ to, name, reason }) => {
-const transporter = createTransporter();
-  await transporter.sendMail({
+await sgMail.send({
     from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
     to,
     subject: 'LogicLords — Application Update',
