@@ -42,13 +42,20 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords'
   .then(() => {
     console.log('✅ MongoDB connected');
     // EMAIL TEST
-    const emailService = require('./utils/emailService');
-    emailService.sendVerificationEmail({
-      to: process.env.GMAIL_USER,
-      name: 'Test',
-      token: 'test123'
-    }).then(() => console.log('✅ Test email sent!'))
-      .catch(err => console.error('❌ Test email failed:', err.message));
+    console.log('GMAIL_USER:', process.env.GMAIL_USER);
+    console.log('GMAIL_PASS exists:', !!process.env.GMAIL_APP_PASSWORD);
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+    transporter.verify((err, success) => {
+      if (err) console.error('❌ Email error:', err.message);
+      else console.log('✅ Email ready!');
+    });
   })
   .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
 /* ── Load Models first (order matters) ── */
