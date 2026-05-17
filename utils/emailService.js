@@ -1,33 +1,17 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const createTransporter = () => {
-  const t = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-  });
+const FROM_TEAM   = 'LogicLords Team <onboarding@resend.dev>';
+const FROM_SYSTEM = 'LogicLords System <onboarding@resend.dev>';
 
-  t.verify((err, success) => {
-    if (err) console.error('❌ Email transporter error:', err.message);
-    else console.log('✅ Email transporter ready:', process.env.GMAIL_USER);
-  });
-
-  return t;
-};
-
-/* ── Email Templates ── */
-
-/**
- * Send verification email to new registrant
- */
+/* ─────────────────────────────────────────────
+   Send verification email to new registrant
+───────────────────────────────────────────── */
 exports.sendVerificationEmail = async ({ to, name, token }) => {
   const verifyUrl = `${process.env.CLIENT_URL}/verify?token=${token}`;
-  const transporter = createTransporter();
 
-  await transporter.sendMail({
-    from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM_TEAM,
     to,
     subject: '✅ Verify your LogicLords account',
     html: `
@@ -35,16 +19,14 @@ exports.sendVerificationEmail = async ({ to, name, token }) => {
       <html>
       <body style="background:#030b1a;font-family:'Segoe UI',sans-serif;color:#dde6f0;padding:0;margin:0;">
         <div style="max-width:560px;margin:40px auto;background:#0d1526;border:1px solid #1a2d4d;border-radius:16px;overflow:hidden;">
-          <!-- Header -->
           <div style="background:linear-gradient(135deg,#00f5d4,#3b82f6);padding:32px;text-align:center;">
             <h1 style="color:#030b1a;font-size:28px;margin:0;font-weight:900;letter-spacing:-1px;">LogicLords</h1>
             <p style="color:#030b1a;margin:8px 0 0;font-size:13px;opacity:.8;">Where Logic Meets Innovation</p>
           </div>
-          <!-- Body -->
           <div style="padding:36px 32px;">
             <h2 style="color:#dde6f0;font-size:20px;margin:0 0 12px;">Hi ${name}! 👋</h2>
             <p style="color:#6b87a8;line-height:1.7;margin:0 0 24px;">
-              Thanks for registering with <strong style="color:#00f5d4;">LogicLords</strong>. 
+              Thanks for registering with <strong style="color:#00f5d4;">LogicLords</strong>.
               Please verify your email address to continue.
             </p>
             <div style="text-align:center;margin:32px 0;">
@@ -61,7 +43,6 @@ exports.sendVerificationEmail = async ({ to, name, token }) => {
               </p>
             </div>
           </div>
-          <!-- Footer -->
           <div style="padding:20px 32px;border-top:1px solid #1a2d4d;text-align:center;">
             <p style="color:#4a6080;font-size:11px;margin:0;">© 2025 LogicLords · Where Logic Meets Innovation</p>
           </div>
@@ -72,16 +53,15 @@ exports.sendVerificationEmail = async ({ to, name, token }) => {
   });
 };
 
-/**
- * Notify admin about new registration request
- */
+/* ─────────────────────────────────────────────
+   Notify admin about new registration request
+───────────────────────────────────────────── */
 exports.sendAdminApprovalRequest = async ({ adminEmail, adminName, applicant }) => {
   const approveUrl = `${process.env.CLIENT_URL}/admin?action=approve&id=${applicant._id}`;
   const rejectUrl  = `${process.env.CLIENT_URL}/admin?action=reject&id=${applicant._id}`;
-  const transporter = createTransporter();
 
-  await transporter.sendMail({
-    from: `"LogicLords System" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM_SYSTEM,
     to: adminEmail,
     subject: `🔔 New Registration Request — ${applicant.name}`,
     html: `
@@ -95,8 +75,6 @@ exports.sendAdminApprovalRequest = async ({ adminEmail, adminName, applicant }) 
           </div>
           <div style="padding:32px;">
             <p style="color:#6b87a8;margin:0 0 20px;">Hi <strong style="color:#dde6f0;">${adminName}</strong>, a new member wants to join LogicLords:</p>
-            
-            <!-- Applicant Card -->
             <div style="background:#060f24;border:1px solid #1a2d4d;border-radius:10px;padding:20px;margin-bottom:28px;">
               <table style="width:100%;border-collapse:collapse;">
                 <tr><td style="color:#4a6080;font-size:12px;padding:6px 0;width:100px;">Name</td><td style="color:#dde6f0;font-size:13px;font-weight:600;">${applicant.name}</td></tr>
@@ -106,13 +84,11 @@ exports.sendAdminApprovalRequest = async ({ adminEmail, adminName, applicant }) 
                 <tr><td style="color:#4a6080;font-size:12px;padding:6px 0;">Applied</td><td style="color:#6b87a8;font-size:12px;">${new Date().toLocaleString('en-IN')}</td></tr>
               </table>
             </div>
-
-            <!-- Action Buttons -->
-            <div style="display:flex;gap:12px;text-align:center;">
-              <a href="${approveUrl}" style="flex:1;background:#10b981;color:#fff;text-decoration:none;padding:13px 20px;border-radius:8px;font-weight:700;font-size:13px;display:inline-block;">
+            <div style="text-align:center;">
+              <a href="${approveUrl}" style="background:#10b981;color:#fff;text-decoration:none;padding:13px 20px;border-radius:8px;font-weight:700;font-size:13px;display:inline-block;margin-right:12px;">
                 ✅ Approve Member
               </a>
-              <a href="${rejectUrl}" style="flex:1;background:#ef4444;color:#fff;text-decoration:none;padding:13px 20px;border-radius:8px;font-weight:700;font-size:13px;display:inline-block;margin-left:12px;">
+              <a href="${rejectUrl}" style="background:#ef4444;color:#fff;text-decoration:none;padding:13px 20px;border-radius:8px;font-weight:700;font-size:13px;display:inline-block;">
                 ❌ Reject
               </a>
             </div>
@@ -130,15 +106,14 @@ exports.sendAdminApprovalRequest = async ({ adminEmail, adminName, applicant }) 
   });
 };
 
-/**
- * Notify member that they have been approved
- */
+/* ─────────────────────────────────────────────
+   Notify member that they have been approved
+───────────────────────────────────────────── */
 exports.sendApprovalConfirmation = async ({ to, name }) => {
   const loginUrl = `${process.env.CLIENT_URL}`;
-  const transporter = createTransporter();
 
-  await transporter.sendMail({
-    from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM_TEAM,
     to,
     subject: '🎉 Welcome to LogicLords — You are approved!',
     html: `
@@ -153,7 +128,7 @@ exports.sendApprovalConfirmation = async ({ to, name }) => {
           <div style="padding:36px 32px;">
             <h2 style="color:#dde6f0;margin:0 0 12px;">Welcome to the team, ${name}!</h2>
             <p style="color:#6b87a8;line-height:1.7;margin:0 0 28px;">
-              Your application has been <strong style="color:#10b981;">approved</strong> by the admin. 
+              Your application has been <strong style="color:#10b981;">approved</strong> by the admin.
               You are now an official member of <strong style="color:#00f5d4;">LogicLords</strong>!
             </p>
             <p style="color:#6b87a8;line-height:1.7;margin:0 0 28px;">
@@ -175,14 +150,12 @@ exports.sendApprovalConfirmation = async ({ to, name }) => {
   });
 };
 
-/**
- * Notify member that they have been rejected
- */
+/* ─────────────────────────────────────────────
+   Notify member that they have been rejected
+───────────────────────────────────────────── */
 exports.sendRejectionEmail = async ({ to, name, reason }) => {
-  const transporter = createTransporter();
-
-  await transporter.sendMail({
-    from: `"LogicLords Team" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM_TEAM,
     to,
     subject: 'LogicLords — Application Update',
     html: `

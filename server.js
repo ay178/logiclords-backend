@@ -39,24 +39,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 /* ── MongoDB ── */
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/logiclords')
-  .then(() => {
-    console.log('✅ MongoDB connected');
-    // EMAIL TEST
-    console.log('GMAIL_USER:', process.env.GMAIL_USER);
-    console.log('GMAIL_PASS exists:', !!process.env.GMAIL_APP_PASSWORD);
-    const nodemailer = require('nodemailer');
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-      },
-    });
-    transporter.verify((err, success) => {
-      if (err) console.error('❌ Email error:', err.message);
-      else console.log('✅ Email ready!');
-    });
-  })
+  .then(() => console.log('✅ MongoDB connected'))
   .catch(err => { console.error('❌ MongoDB error:', err.message); process.exit(1); });
 /* ── Load Models first (order matters) ── */
 require('./models/Member');
